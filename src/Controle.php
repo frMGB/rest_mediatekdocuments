@@ -6,10 +6,11 @@ include_once("MyAccessBDD.php");
 /**
  * Contrôleur : reçoit et traite les demandes du point d'entrée
  */
-class Controle{
-	
+class Controle
+{
+
     /**
-     * 
+     *
      * @var MyAccessBDD
      */
     private $myAaccessBDD;
@@ -17,10 +18,11 @@ class Controle{
     /**
      * constructeur : récupère l'instance d'accès à la BDD
      */
-    public function __construct(){
-        try{
+    public function __construct()
+    {
+        try {
             $this->myAaccessBDD = new MyAccessBDD();
-        }catch(Exception $e){
+        } catch (Exception $e) {
             $this->reponse(500, "erreur serveur");
             die();
         }
@@ -34,8 +36,36 @@ class Controle{
      * @param string|null $id
      * @param array|null $champs
      */
-    public function demande(string $methodeHTTP, string $table, ?string $id, ?array $champs){
-        $result = $this->myAaccessBDD->demande($methodeHTTP, $table, $id, $champs);
+    public function demande(string $methodeHTTP, string $table, ?string $id, ?array $champs)
+    {
+        $parametres = $champs; // Paramètres depuis l'URL (pour GET/DELETE)
+
+        // Récupérer les paramètres depuis le corps pour POST ou PUT
+        if (($methodeHTTP == "POST" || $methodeHTTP == "PUT") && empty($champs)) {
+            $corpsRequete = file_get_contents('php://input');
+            if (!empty($corpsRequete)) {
+                parse_str($corpsRequete, $paramsCorps);
+                if (!empty($paramsCorps)) {
+                    $parametres = $paramsCorps;
+                    error_log("Controle->demande: Données $methodeHTTP reçues (form-urlencoded) : " . print_r($parametres, true));
+                } else {
+                    error_log("Controle->demande: Méthode {$methodeHTTP} mais corps non parsable comme form-urlencoded: {$corpsRequete}");
+                    $parametres = null;
+                }
+            } else {
+                error_log("Controle->demande: Méthode $methodeHTTP mais corps de requête vide.");
+                $parametres = null;
+            }
+        }
+
+        // Passe les paramètres récupérés (soit de l'URL soit du corps) à la BDD
+        // Modification pour DELETE : passer l'ID au lieu des paramètres
+        if ($methodeHTTP == "DELETE") {
+            $result = $this->myAaccessBDD->demande($methodeHTTP, $table, null, ["id" => $id]); // Passe l'ID dans un tableau pour traitementDelete
+        } else {
+            $result = $this->myAaccessBDD->demande($methodeHTTP, $table, $id, $parametres);
+        }
+
         $this->controleResult($result);
     }
 
@@ -45,7 +75,8 @@ class Controle{
      * @param string $message message correspondant au code
      * @param array|int|string|null $result
      */
-    private function reponse(int $code, string $message, array|int|string|null $result=""){
+    private function reponse(int $code, string $message, array|int|string|null $result = "")
+    {
         $retour = array(
             'code' => $code,
             'message' => $message,
@@ -53,26 +84,27 @@ class Controle{
         );
         echo json_encode($retour, JSON_UNESCAPED_UNICODE);
     }
-    
+
     /**
      * contrôle si le résultat n'est pas null
      * demande l'affichage de la réponse adéquate
      * @param array|int|null $result résultat de la requête
      */
-    private function controleResult(array|int|null $result) {
-        if (!is_null($result)){
+    private function controleResult(array|int|null $result)
+    {
+        if (!is_null($result)) {
             $this->reponse(200, "OK", $result);
-        }else{	
+        } else {
             $this->reponse(400, "requete invalide");
-        }        
+        }
     }
-	
+
     /**
      * authentification incorrecte
      * demande d'afficher un messaage d'erreur
      */
-    public function unauthorized(){
+    public function unauthorized()
+    {
         $this->reponse(401, "authentification incorrecte");
     }
-    
 }
