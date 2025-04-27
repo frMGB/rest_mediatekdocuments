@@ -36,24 +36,39 @@ class MyAccessBDD extends AccessBDD
     {
         switch ($table) {
             case "livre":
-                return $this->selectAllLivres($champs);
+                if (!empty($champs)) {
+                    return $this->selectTuplesOneTable($table, $champs);
+                } else {
+                    return $this->selectAllLivres();
+                }
             case "dvd":
-                return $this->selectAllDvd($champs);
+                if (!empty($champs)) {
+                    return $this->selectTuplesOneTable($table, $champs);
+                } else {
+                    return $this->selectAllDvd();
+                }
             case "revue":
-                return $this->selectAllRevues();
+                if (!empty($champs)) {
+                    return $this->selectTuplesOneTable($table, $champs);
+                } else {
+                    return $this->selectAllRevues();
+                }
             case "exemplaire":
                 return $this->selectExemplairesRevue($champs);
-            case "commandedocument":
-                return $this->selectCommandesLivre($champs);
             case "genre":
             case "public":
             case "rayon":
             case "etat":
-            case "suivi":
                 // select portant sur une table contenant juste id et libelle
                 return $this->selectTableSimple($table);
-            case "":
-            // return $this->uneFonction(parametres);
+            case "commandedocument":
+                return $this->selectCommandesDocument($champs);
+            case "commanderevue":
+                return $this->selectCommandesRevue($champs);
+            case "suivi":
+                return $this->selectSuivi();
+            case "abofinproche":
+                return $this->selectAboFinProche();
             default:
                 // cas général
                 return $this->selectTuplesOneTable($table, $champs);
@@ -72,10 +87,8 @@ class MyAccessBDD extends AccessBDD
         switch ($table) {
             case "commandedocument":
                 return $this->insertCommandeDocument($champs);
-            case "exemplaire":
-                return $this->insertOneTupleOneTable($table, $champs);
-            case "":
-            // return $this->uneFonction(parametres);
+            case "commanderevue":
+                return $this->insertCommandeRevue($champs);
             default:
                 // cas général
                 return $this->insertOneTupleOneTable($table, $champs);
@@ -95,11 +108,8 @@ class MyAccessBDD extends AccessBDD
         switch ($table) {
             case "commandedocument":
                 return $this->updateSuiviCommandeDocument($id, $champs);
-            case "":
-            // return $this->uneFonction(parametres);
             default:
                 // cas général
-                error_log("traitementUpdate: Cas général appelé pour table '$table', ID '$id'. La fonction updateOneTupleOneTable pourrait échouer si le format des champs n'est pas direct.");
                 return $this->updateOneTupleOneTable($table, $id, $champs);
         }
     }
@@ -114,10 +124,10 @@ class MyAccessBDD extends AccessBDD
     protected function traitementDelete(string $table, ?array $champs): ?int
     {
         switch ($table) {
-            case "commande":
-                return $this->deleteCommande($champs);
-            case "":
-            // return $this->uneFonction(parametres);
+            case "commandedocument":
+                return $this->deleteCommandeDocument($champs);
+            case "commanderevue":
+                return $this->deleteCommandeRevue($champs);
             default:
                 // cas général
                 return $this->deleteTuplesOneTable($table, $champs);
@@ -142,7 +152,7 @@ class MyAccessBDD extends AccessBDD
             foreach ($champs as $key => $value) {
                 $requete .= "$key=:$key and ";
             }
-            // enlève le dernier and
+            // (enlève le dernier and)
             $requete = substr($requete, 0, strlen($requete) - 5);
             return $this->conn->queryBDD($requete, $champs);
         }
@@ -225,25 +235,21 @@ class MyAccessBDD extends AccessBDD
     }
 
     /**
-     * récupère toutes les lignes d'une table simple (qui contient juste id et libelle, ou id et etape pour suivi)
+     * récupère toutes les lignes d'une table simple (qui contient juste id et libelle)
      * @param string $table
      * @return array|null
      */
     private function selectTableSimple(string $table): ?array
     {
-        // Adapte la requête pour la table 'suivi' qui a 'etape' au lieu de 'libelle'
-        $orderByField = ($table === 'suivi') ? 'etape' : 'libelle';
-        $requete = "select * from $table order by $orderByField;";
+        $requete = "select * from $table order by libelle;";
         return $this->conn->queryBDD($requete);
     }
 
     /**
      * récupère toutes les lignes de la table Livre et les tables associées
-     * peut filtrer par id si fourni dans $champs
-     * @param array|null $champs
      * @return array|null
      */
-    private function selectAllLivres(?array $champs = null): ?array
+    private function selectAllLivres(): ?array
     {
         $requete = "Select l.id, l.ISBN, l.auteur, d.titre, d.image, l.collection, ";
         $requete .= "d.idrayon, d.idpublic, d.idgenre, g.libelle as genre, p.libelle as lePublic, r.libelle as rayon ";
@@ -251,25 +257,15 @@ class MyAccessBDD extends AccessBDD
         $requete .= "join genre g on g.id=d.idGenre ";
         $requete .= "join public p on p.id=d.idPublic ";
         $requete .= "join rayon r on r.id=d.idRayon ";
-
-        $params = [];
-        if (!empty($champs) && isset($champs['id'])) {
-            $requete .= "WHERE l.id = :id ";
-            $params['id'] = $champs['id'];
-        }
-
-        $requete .= "order by titre;";
-
-        return $this->conn->queryBDD($requete, $params);
+        $requete .= "order by titre ";
+        return $this->conn->queryBDD($requete);
     }
 
     /**
      * récupère toutes les lignes de la table DVD et les tables associées
-     * peut filtrer par id si fourni dans $champs
-     * @param array|null $champs
      * @return array|null
      */
-    private function selectAllDvd(?array $champs = null): ?array
+    private function selectAllDvd(): ?array
     {
         $requete = "Select l.id, l.duree, l.realisateur, d.titre, d.image, l.synopsis, ";
         $requete .= "d.idrayon, d.idpublic, d.idgenre, g.libelle as genre, p.libelle as lePublic, r.libelle as rayon ";
@@ -277,15 +273,8 @@ class MyAccessBDD extends AccessBDD
         $requete .= "join genre g on g.id=d.idGenre ";
         $requete .= "join public p on p.id=d.idPublic ";
         $requete .= "join rayon r on r.id=d.idRayon ";
-
-        $params = [];
-        if (!empty($champs) && isset($champs['id'])) {
-            $requete .= "WHERE l.id = :id ";
-            $params['id'] = $champs['id'];
-        }
-
         $requete .= "order by titre ";
-        return $this->conn->queryBDD($requete, $params);
+        return $this->conn->queryBDD($requete);
     }
 
     /**
@@ -326,200 +315,426 @@ class MyAccessBDD extends AccessBDD
     }
 
     /**
-     * Récupère les commandes d'un livre ou DVD spécifique avec les informations jointes
-     * @param array|null $champs Doit contenir la clé 'idLivreDvd'
+     * récupère toutes les commandes d'un document (livre ou DVD)
+     * @param array|null $champs
      * @return array|null
      */
-    private function selectCommandesLivre(?array $champs): ?array
+    private function selectCommandesDocument(?array $champs): ?array
     {
-        // Vérification du paramètre requis
-        if (empty($champs) || !isset($champs['idLivreDvd'])) {
-            error_log("selectCommandesLivre: Paramètre 'idLivreDvd' manquant.");
+        if (empty($champs)) {
             return null;
         }
-
-        $params = ['idLivreDvd' => $champs['idLivreDvd']];
-
-        // Requête joignant commande, commandedocument et suivi
-        $requete = "SELECT
-                        c.id AS IdCommande,
-                        c.dateCommande AS DateCommande,
-                        c.montant AS Montant,
-                        cd.nbExemplaire AS NbExemplaire,
-                        cd.idLivreDvd AS IdLivreDvd,
-                        cd.idSuivi AS IdSuivi,
-                        s.etape AS LibelleSuivi
-                    FROM commande c
-                    JOIN commandedocument cd ON c.id = cd.id
-                    JOIN suivi s ON cd.idSuivi = s.id
-                    WHERE cd.idLivreDvd = :idLivreDvd
-                    ORDER BY c.dateCommande DESC";
-
-        return $this->conn->queryBDD($requete, $params);
+        if (!array_key_exists('id', $champs)) {
+            return null;
+        }
+        $champNecessaire['id'] = $champs['id'];
+        $requete = "SELECT c.id, c.dateCommande, c.montant, cd.nbExemplaire, cd.idSuivi, s.etape AS LibelleSuivi ";
+        $requete .= "FROM commande c ";
+        $requete .= "JOIN commandedocument cd ON c.id = cd.id ";
+        $requete .= "JOIN suivi s ON cd.idSuivi = s.id ";
+        $requete .= "WHERE cd.idLivreDvd = :id ";
+        $requete .= "ORDER BY c.dateCommande DESC";
+        return $this->conn->queryBDD($requete, $champNecessaire);
     }
 
     /**
-     * Insère une nouvelle commande et sa ligne de document associée
-     * @param array|null $champs Doit contenir les clés 'commande' et 'commandeDoc' avec des chaînes JSON
-     * @return int|null 1 si succès, 0 ou null si erreur
+     * récupère toutes les commandes (abonnements) d'une revue
+     * @param array|null $champs
+     * @return array|null
+     */
+    private function selectCommandesRevue(?array $champs): ?array
+    {
+        if (empty($champs)) {
+            return null;
+        }
+        if (!array_key_exists('id', $champs)) {
+            return null;
+        }
+        $champNecessaire['id'] = $champs['id'];
+        $requete = "SELECT c.id, c.dateCommande, c.montant, a.dateFinAbonnement ";
+        $requete .= "FROM commande c ";
+        $requete .= "JOIN abonnement a ON c.id = a.id ";
+        $requete .= "WHERE a.idRevue = :id ";
+        $requete .= "ORDER BY c.dateCommande DESC";
+        return $this->conn->queryBDD($requete, $champNecessaire);
+    }
+
+    /**
+     * Insère une nouvelle commande de document (livre ou DVD)
+     * @param array|null $champs
+     * @return int|null
      */
     private function insertCommandeDocument(?array $champs): ?int
     {
-        // Vérification des paramètres requis
-        if (empty($champs) || !isset($champs['commande']) || !isset($champs['commandeDoc'])) {
-            error_log("insertCommandeDocument: Paramètres 'commande' ou 'commandeDoc' manquants ou vides.");
+        if (empty($champs)) {
             return null;
         }
 
-        // Décodage des chaînes JSON
-        $commandeData = json_decode($champs['commande'], true);
-        $commandeDocData = json_decode($champs['commandeDoc'], true);
-
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            error_log("insertCommandeDocument: Erreur de décodage JSON - " . json_last_error_msg());
-            return null;
+        // Vérification des champs requis
+        $requiredFields = ['dateCommande', 'montant', 'nbExemplaire', 'idLivreDvd'];
+        foreach ($requiredFields as $field) {
+            if (!array_key_exists($field, $champs)) {
+                return null;
+            }
         }
 
-        // Génération d'un ID unique
-        $newId = substr(uniqid(), -5);
-
-        // Préparation des données pour l'insertion dans 'commande'
-        $paramsCommande = [
-            'id' => $newId,
-            'dateCommande' => $commandeData['DateCommande'],
-            'montant' => $commandeData['Montant']
-        ];
-
-        // Préparation des données pour l'insertion dans 'commandedocument'
-        $paramsCommandeDoc = [
-            'id' => $newId,
-            'nbExemplaire' => $commandeDocData['NbExemplaire'],
-            'idLivreDvd' => $commandeDocData['IdLivreDvd'],
-            'idSuivi' => $commandeDocData['IdSuivi']
-        ];
-
-        // Début de la transaction
-        // Accès à PDO via le getter pour la transaction
-        $pdo = $this->conn->getPDO();
-        if (!$pdo->beginTransaction()) {
-            error_log("insertCommandeDocument: Impossible de démarrer la transaction.");
-            return null;
-        }
+        // Démarrer une transaction
+        $this->conn->updateBDD("START TRANSACTION;");
 
         try {
-            // 1. Insertion dans la table 'commande'
-            $sqlCommande = "INSERT INTO commande (id, dateCommande, montant) VALUES (:id, :dateCommande, :montant)";
-            $resultCommande = $this->conn->updateBDD($sqlCommande, $paramsCommande);
+            // Générer un nouvel ID unique de 5 caractères
+            $id = bin2hex(random_bytes(3)); // Génère un ID de 6 caractères
+            $id = substr($id, 0, 5); // On ne garde que 5 caractères
 
-            if ($resultCommande === null || $resultCommande < 1) {
-                // Erreur lors de l'insertion dans commande, rollback
-                error_log("insertCommandeDocument: Echec insertion commande pour ID {$newId}");
-                $pdo->rollback();
+            // Insérer dans la table commande
+            $commandeData = [
+                'id' => $id,
+                'dateCommande' => $champs['dateCommande'],
+                'montant' => $champs['montant']
+            ];
+
+            $resultCommande = $this->insertOneTupleOneTable('commande', $commandeData);
+
+            if ($resultCommande === null) {
+                $this->conn->updateBDD("ROLLBACK;");
                 return null;
             }
 
-            // 2. Insertion dans la table 'commandedocument'
-            $sqlCommandeDoc = "INSERT INTO commandedocument (id, nbExemplaire, idLivreDvd, idSuivi) VALUES (:id, :nbExemplaire, :idLivreDvd, :idSuivi)";
-            $resultCommandeDoc = $this->conn->updateBDD($sqlCommandeDoc, $paramsCommandeDoc);
+            // Insérer dans la table commandedocument
+            $commandeDocData = [
+                'id' => $id,
+                'nbExemplaire' => $champs['nbExemplaire'],
+                'idLivreDvd' => $champs['idLivreDvd'],
+                'idSuivi' => 1 // "en cours" par défaut
+            ];
 
-            if ($resultCommandeDoc === null || $resultCommandeDoc < 1) {
-                // Erreur lors de l'insertion dans commandedocument, rollback
-                error_log("insertCommandeDocument: Echec insertion commandedocument pour ID {$newId}");
-                $pdo->rollback();
+            $resultCommandeDoc = $this->insertOneTupleOneTable('commandedocument', $commandeDocData);
+
+            if ($resultCommandeDoc === null) {
+                $this->conn->updateBDD("ROLLBACK;");
                 return null;
             }
 
-            // Si tout s'est bien passé, commit
-            if ($pdo->commit()) {
-                error_log("insertCommandeDocument: Succès pour ID {$newId}");
-                return 1;
-            } else {
-                error_log("insertCommandeDocument: Echec commit pour ID {$newId}");
-                $pdo->rollback();
-                return null;
-            }
+            // Valider la transaction
+            $this->conn->updateBDD("COMMIT;");
+            return 1;
 
         } catch (\Exception $e) {
-            error_log("insertCommandeDocument: Exception pour ID {$newId} - " . $e->getMessage());
-            $pdo->rollback();
+            $this->conn->updateBDD("ROLLBACK;");
             return null;
         }
     }
 
     /**
-     * Met à jour l'étape de suivi d'une commande document
-     * @param string|null $id ID de la commande document
-     * @param array|null $champs Doit contenir la clé 'champs' avec une chaîne JSON contenant {"idSuivi": N}
+     * Insère une nouvelle commande de revue (abonnement)
+     * @param array|null $champs
+     * @return int|null
+     */
+    private function insertCommandeRevue(?array $champs): ?int
+    {
+        if (empty($champs)) {
+            return null;
+        }
+
+        // Vérification des champs requis
+        $requiredFields = ['dateCommande', 'montant', 'idRevue', 'dateFinAbonnement'];
+        foreach ($requiredFields as $field) {
+            if (!array_key_exists($field, $champs)) {
+                return null;
+            }
+        }
+
+        // Démarrer une transaction
+        $this->conn->updateBDD("START TRANSACTION;");
+
+        try {
+            // Générer un nouvel ID unique de 5 caractères
+            $id = bin2hex(random_bytes(3)); // Génère un ID de 6 caractères
+            $id = substr($id, 0, 5); // On ne garde que 5 caractères
+
+            // Insérer dans la table commande
+            $commandeData = [
+                'id' => $id,
+                'dateCommande' => $champs['dateCommande'],
+                'montant' => $champs['montant']
+            ];
+
+            $resultCommande = $this->insertOneTupleOneTable('commande', $commandeData);
+
+            if ($resultCommande === null) {
+                $this->conn->updateBDD("ROLLBACK;");
+                return null;
+            }
+
+            // Insérer dans la table abonnement
+            $abonnementData = [
+                'id' => $id,
+                'dateFinAbonnement' => $champs['dateFinAbonnement'],
+                'idRevue' => $champs['idRevue']
+            ];
+
+            $resultAbonnement = $this->insertOneTupleOneTable('abonnement', $abonnementData);
+
+            if ($resultAbonnement === null) {
+                $this->conn->updateBDD("ROLLBACK;");
+                return null;
+            }
+
+            // Valider la transaction
+            $this->conn->updateBDD("COMMIT;");
+            return 1;
+
+        } catch (\Exception $e) {
+            $this->conn->updateBDD("ROLLBACK;");
+            return null;
+        }
+    }
+
+    /**
+     * Met à jour l'étape de suivi d'une commande de document
+     * @param string|null $id ID de la commande
+     * @param array|null $champs
      * @return int|null
      */
     private function updateSuiviCommandeDocument(?string $id, ?array $champs): ?int
     {
-        // --- Ajout Logs ---
-        error_log("updateSuiviCommandeDocument: Reçu ID = " . ($id ?? 'NULL'));
-        error_log("updateSuiviCommandeDocument: Reçu \$champs = " . print_r($champs, true));
-        // --- Fin Logs ---
-
-        // Vérification des paramètres
-        if (is_null($id) || empty($champs) || !isset($champs['idSuivi'])) {
-            error_log("updateSuiviCommandeDocument: ID ou paramètre 'idSuivi' manquant dans \$champs.");
+        if (empty($champs) || is_null($id)) {
             return null;
         }
 
-        // Préparation des paramètres pour la requête UPDATE
-        $params = [
+        if (!array_key_exists('idSuivi', $champs)) {
+            return null;
+        }
+
+        // Vérifier les règles de changement d'étape
+        $requete = "SELECT idSuivi FROM commandedocument WHERE id = :id";
+        $param = ['id' => $id];
+        $currentEtape = $this->conn->queryBDD($requete, $param);
+
+        if (empty($currentEtape)) {
+            return null;
+        }
+
+        $currentEtapeId = $currentEtape[0]['idSuivi'];
+        $newEtapeId = $champs['idSuivi'];
+
+        // Une commande livrée (2) ou réglée (3) ne peut pas revenir à une étape précédente (en cours (1) ou relancée (4))
+        if (($currentEtapeId == 2 || $currentEtapeId == 3) && ($newEtapeId == 1 || $newEtapeId == 4)) {
+            return 0;
+        }
+
+        // Une commande ne peut pas être réglée (3) si elle n'est pas livrée (2)
+        if ($newEtapeId == 3 && $currentEtapeId != 2) {
+            return 0;
+        }
+
+        // Mise à jour de l'étape
+        $requete = "UPDATE commandedocument SET idSuivi = :idSuivi WHERE id = :id";
+        $param = [
             'id' => $id,
-            'idSuivi' => $champs['idSuivi']
+            'idSuivi' => $newEtapeId
         ];
 
-        // Construction et exécution de la requête
-        $requete = "UPDATE commandedocument SET idSuivi = :idSuivi WHERE id = :id";
+        return $this->conn->updateBDD($requete, $param);
+    }
+
+    /**
+     * Supprime une commande de document
+     * @param array|null $champs
+     * @return int|null
+     */
+    private function deleteCommandeDocument(?array $champs): ?int
+    {
+        if (empty($champs)) {
+            return null;
+        }
+
+        if (!array_key_exists('id', $champs)) {
+            return null;
+        }
+
+        // Vérifier que la commande n'est pas encore livrée
+        $requete = "SELECT idSuivi FROM commandedocument WHERE id = :id";
+        $param = ['id' => $champs['id']];
+        $result = $this->conn->queryBDD($requete, $param);
+
+        if (empty($result)) {
+            return null;
+        }
+
+        $etapeId = $result[0]['idSuivi'];
+
+        // Si la commande est livrée (2) ou réglée (3), on ne peut pas la supprimer
+        if ($etapeId == 2 || $etapeId == 3) {
+            return 0;
+        }
+
+        // Supprimer la commande
+        return $this->deleteTuplesOneTable('commande', $champs);
+    }
+
+    /**
+     * Supprime une commande de revue
+     * @param array|null $champs
+     * @return int|null
+     */
+    private function deleteCommandeRevue(?array $champs): ?int
+    {
+        if (empty($champs) || !array_key_exists('id', $champs)) {
+            return null;
+        }
+
+        $idToDelete = $champs['id']; // Utiliser une variable spécifique
+
+        // Démarrer une transaction
+        $this->conn->updateBDD("START TRANSACTION;");
 
         try {
-            $result = $this->conn->updateBDD($requete, $params);
-            error_log("updateSuiviCommandeDocument: Résultat updateBDD pour ID $id avec idSuivi {$params['idSuivi']} -> " . ($result ?? 'NULL'));
-            return $result;
+            // 1. Vérifier qu'aucun exemplaire n'est rattaché à cet abonnement
+            $requete = "SELECT a.id, a.dateFinAbonnement, a.idRevue, c.dateCommande
+                        FROM abonnement a
+                        JOIN commande c ON a.id = c.id
+                        WHERE a.id = :id";
+            $param = ['id' => $idToDelete];
+            $abonnement = $this->conn->queryBDD($requete, $param);
+
+            if (empty($abonnement)) {
+                // Annuler la transaction, l'abonnement n'existe pas ou la requête a échoué
+                $this->conn->updateBDD("ROLLBACK;");
+                return null;
+            }
+
+            $dateCommande = $abonnement[0]['dateCommande'];
+            $dateFinAbonnement = $abonnement[0]['dateFinAbonnement'];
+            $idRevue = $abonnement[0]['idRevue'];
+
+            $requete = "SELECT COUNT(*) AS nbExemplaires
+                        FROM exemplaire
+                        WHERE id = :idRevue
+                        AND dateAchat BETWEEN :dateCommande AND :dateFinAbonnement";
+            $param = [
+                'idRevue' => $idRevue,
+                'dateCommande' => $dateCommande,
+                'dateFinAbonnement' => $dateFinAbonnement
+            ];
+            $exemplaires = $this->conn->queryBDD($requete, $param);
+
+            // Vérifier si la requête a échoué
+            if ($exemplaires === null) {
+                $this->conn->updateBDD("ROLLBACK;");
+                return null;
+            }
+
+            if ($exemplaires[0]['nbExemplaires'] > 0) {
+                // Annuler la transaction, impossible de supprimer car des exemplaires existent
+                $this->conn->updateBDD("ROLLBACK;");
+                return 0; // Indique 0 lignes supprimées car la condition n'est pas remplie
+            }
+
+            // 2. Supprimer d'abord l'abonnement
+            $requeteAbo = "DELETE FROM abonnement WHERE id = :id";
+            $paramAbo = ['id' => $idToDelete];
+            $resultAbo = $this->conn->updateBDD($requeteAbo, $paramAbo);
+
+            // Si la suppression de l'abonnement a échoué ou n'a affecté aucune ligne (inattendu)
+            if ($resultAbo === null || $resultAbo === 0) {
+                $this->conn->updateBDD("ROLLBACK;");
+                return null; // Retourne null en cas d'échec
+            }
+
+            // 3. Puis supprimer la commande
+            $resultCmd = $this->deleteTuplesOneTable('commande', ['id' => $idToDelete]);
+
+            // Si la suppression de la commande a échoué ou n'a affecté aucune ligne (inattendu)
+            if ($resultCmd === null || $resultCmd === 0) {
+                $this->conn->updateBDD("ROLLBACK;");
+                return null; // Retourne null en cas d'échec
+            }
+
+            // Si les deux suppressions ont réussi, valider la transaction
+            $this->conn->updateBDD("COMMIT;");
+            // Retourne le nombre de lignes supprimées de commande (devrait être 1)
+            return $resultCmd;
+
         } catch (\Exception $e) {
-            error_log("updateSuiviCommandeDocument: Exception pour ID $id - " . $e->getMessage());
-            return null;
+            // Annuler la transaction en cas d'exception
+            $this->conn->updateBDD("ROLLBACK;");
+            // Log l'erreur (optionnel mais recommandé)
+            // error_log("Erreur lors de la suppression de la commande revue: " . $e->getMessage());
+            return null; // Retourne null en cas d'exception
         }
     }
 
     /**
-     * Supprime une commande. La suppression dans `commandedocument` est gérée par un trigger SQL
-     * @param array|null $champs Doit contenir la clé 'id' avec l'ID de la commande à supprimer
-     * @return int|null
+     * Vérifie si une date de parution est comprise dans la période d'un abonnement
+     * @param string $dateCommande
+     * @param string $dateFinAbonnement
+     * @param string $dateParution
+     * @return bool
      */
-    private function deleteCommande(?array $champs): ?int
+    public function parutionDansAbonnement(string $dateCommande, string $dateFinAbonnement, string $dateParution): bool
     {
-        // Vérification du paramètre 'id'
-        if (empty($champs) || !isset($champs['id'])) {
-            error_log("deleteCommande (Trigger): Paramètre 'id' manquant.");
-            return null;
-        }
-
-        $idCommande = $champs['id'];
-        $params = ['id' => $idCommande];
-
-        try {
-            // Suppression directe dans la table 'commande'. Le trigger s'occupe de 'commandedocument'
-            $sqlDeleteCmd = "DELETE FROM commande WHERE id = :id";
-            $resultDeleteCmd = $this->conn->updateBDD($sqlDeleteCmd, $params);
-
-            if ($resultDeleteCmd === null) {
-                error_log("deleteCommande (Trigger): Erreur lors de la suppression dans commande pour ID {$idCommande}");
-                return null;
-            } elseif ($resultDeleteCmd === 0) {
-                error_log("deleteCommande (Trigger): Aucune commande trouvée avec l'ID {$idCommande}.");
-                return 1;
-            } else {
-                error_log("deleteCommande (Trigger): Succès suppression commande ID {$idCommande}");
-                return $resultDeleteCmd;
-            }
-
-        } catch (\Exception $e) {
-            error_log("deleteCommande (Trigger): Exception pour ID {$idCommande} - " . $e->getMessage());
-            return null;
-        }
+        return $dateParution >= $dateCommande && $dateParution <= $dateFinAbonnement;
     }
 
+    /**
+     * Récupère la liste des abonnements de revues se terminant dans moins de 30 jours
+     * @return array|null
+     */
+    private function selectAboFinProche(): ?array
+    {
+        $requete = "SELECT a.id, a.dateFinAbonnement, a.idRevue, d.titre, r.periodicite, r.delaiMiseADispo
+                    FROM abonnement a
+                    JOIN revue r ON a.idRevue = r.id
+                    JOIN document d ON r.id = d.id
+                    WHERE a.dateFinAbonnement BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+                    ORDER BY a.dateFinAbonnement ASC";
+
+        return $this->conn->queryBDD($requete);
+    }
+
+    /**
+     * récupère toutes les lignes de la table Suivi
+     * @return array|null
+     */
+    private function selectSuivi(): ?array
+    {
+        $requete = "select * from suivi order by etape;"; // Trier par la colonne 'etape'
+        return $this->conn->queryBDD($requete);
+    }
+
+    /**
+     * Vérifie les identifiants d'un utilisateur.
+     * @param string $login
+     * @param string $password Mot de passe en clair fourni par l'utilisateur
+     * @return array|false Retourne les données de l'utilisateur (sans le mot de passe) si succès, sinon false.
+     */
+    public function verifyUserCredentials(string $login, string $password): array|false
+    {
+        // Récupérer l'utilisateur par son login
+        $requete = "SELECT u.id, u.login, u.password, u.nom, u.prenom, u.mail, u.idService, s.libelle as service
+                    FROM utilisateur u
+                    JOIN service s ON u.idService = s.id
+                    WHERE u.login = :login";
+        $param = ['login' => $login];
+        $user = $this->conn->queryBDD($requete, $param);
+
+        // Vérifier si l'utilisateur existe
+        if (empty($user)) {
+            return false; // Utilisateur non trouvé
+        }
+
+        $userData = $user[0]; // Prendre le premier (et unique) résultat
+        $hashedPassword = $userData['password'];
+
+        // Vérifier le mot de passe fourni avec le hash stocké
+        // !!! Ceci ne fonctionnera que si le mot de passe en BDD est un hash valide !!!
+        if (password_verify($password, $hashedPassword)) {
+            // Mot de passe correct
+            return $userData; // Retourne toutes les données récupérées (sera filtré dans Controle)
+        } else {
+            // Mot de passe incorrect
+            return false;
+        }
+    }
 }

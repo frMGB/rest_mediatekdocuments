@@ -23,8 +23,34 @@ if (!$url->authentification()) {
     $methodeHTTP = $url->recupMethodeHTTP();
     //récupère les données passées dans l'url (visibles ou cachées)
     $table = $url->recupVariable("table");
-    $id = $url->recupVariable("id");
+    $id = $url->recupVariable("id"); // Principalement pour PUT /table/id
+
+    // Tenter de récupérer les champs depuis le segment JSON de l'URL ou la query string
     $champs = $url->recupVariable("champs", "json");
-    // demande au controleur de traiter la demande
-    $controle->demande($methodeHTTP, $table, $id, $champs);
+
+    // Pour POST, PUT, DELETE, si les champs n'ont pas été fournis via le segment JSON de l'URL
+    // ou via un paramètre 'champs' dans la query string, récupérer toutes les données
+    // (cela couvre les cas où les données sont dans le body ou en query string simple id=...)
+    if (in_array($methodeHTTP, ['POST', 'PUT', 'DELETE'])) {
+        if (is_null($champs)) {
+            $champs = $url->getAllData();
+        }
+    }
+
+    // Si on accède à la racine de l'API, on retourne des informations générales
+    if (empty($table) && $methodeHTTP === 'GET') {
+        $controle->accueil();
+    }
+    // Cas spécifique de l'authentification
+    else if ($table === 'auth' && $methodeHTTP === 'POST') {
+        $controle->authenticate($champs);
+    } else {
+        // Vérifier si $table est null avant de l'utiliser
+        if (is_null($table)) {
+            $controle->reponse(400, "Table non spécifiée");
+        } else {
+            // demande au controleur de traiter la demande
+            $controle->demande($methodeHTTP, $table, $id, $champs);
+        }
+    }
 }

@@ -91,6 +91,15 @@ class Url
     }
 
     /**
+     * Retourne toutes les données récupérées (GET, POST, body)
+     * @return array
+     */
+    public function getAllData(): array
+    {
+        return $this->data;
+    }
+
+    /**
      * vérifie l'authentification suivant la demande
      * possibilité d'ajouter des 'case' et de nouvelles fonctions
      * si besoin d'un autre type d'authentification

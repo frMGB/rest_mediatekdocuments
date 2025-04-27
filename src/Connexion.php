@@ -21,15 +21,6 @@ class Connexion
     private $conn = null;
 
     /**
-     * Retourne l'objet PDO
-     * @return \PDO
-     */
-    public function getPDO(): \PDO
-    {
-        return $this->conn;
-    }
-
-    /**
      * constructeur privé : connexion à la BDD
      * @param string $login
      * @param string $pwd

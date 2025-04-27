@@ -38,35 +38,65 @@ class Controle
      */
     public function demande(string $methodeHTTP, string $table, ?string $id, ?array $champs)
     {
-        $parametres = $champs; // Paramètres depuis l'URL (pour GET/DELETE)
-
-        // Récupérer les paramètres depuis le corps pour POST ou PUT
-        if (($methodeHTTP == "POST" || $methodeHTTP == "PUT") && empty($champs)) {
-            $corpsRequete = file_get_contents('php://input');
-            if (!empty($corpsRequete)) {
-                parse_str($corpsRequete, $paramsCorps);
-                if (!empty($paramsCorps)) {
-                    $parametres = $paramsCorps;
-                    error_log("Controle->demande: Données $methodeHTTP reçues (form-urlencoded) : " . print_r($parametres, true));
-                } else {
-                    error_log("Controle->demande: Méthode {$methodeHTTP} mais corps non parsable comme form-urlencoded: {$corpsRequete}");
-                    $parametres = null;
-                }
-            } else {
-                error_log("Controle->demande: Méthode $methodeHTTP mais corps de requête vide.");
-                $parametres = null;
-            }
-        }
-
-        // Passe les paramètres récupérés (soit de l'URL soit du corps) à la BDD
-        // Modification pour DELETE : passer l'ID au lieu des paramètres
-        if ($methodeHTTP == "DELETE") {
-            $result = $this->myAaccessBDD->demande($methodeHTTP, $table, null, ["id" => $id]); // Passe l'ID dans un tableau pour traitementDelete
-        } else {
-            $result = $this->myAaccessBDD->demande($methodeHTTP, $table, $id, $parametres);
-        }
-
+        $result = $this->myAaccessBDD->demande($methodeHTTP, $table, $id, $champs);
         $this->controleResult($result);
+    }
+
+    /**
+     * Gère l'authentification d'un utilisateur
+     * @param array|null $credentials Contient 'login' et 'password'
+     */
+    public function authenticate(?array $credentials)
+    {
+        if (empty($credentials) || !isset($credentials['login']) || !isset($credentials['password'])) {
+            $this->reponse(400, "Identifiants manquants");
+            return;
+        }
+
+        $login = $credentials['login'];
+        $password = $credentials['password'];
+
+        // Appeler MyAccessBDD pour vérifier les identifiants
+        $userData = $this->myAaccessBDD->verifyUserCredentials($login, $password);
+
+        if ($userData) {
+            // Authentification réussie, renvoyer les informations nécessaires (dont idService)
+            // Ne pas renvoyer le mot de passe !
+            unset($userData['password']);
+            $this->reponse(200, "Authentification réussie", $userData);
+        } else {
+            // Authentification échouée
+            $this->unauthorized(); // Utilise la méthode existante pour réponse 401
+        }
+    }
+
+    /**
+     * Gère les requêtes à la racine de l'API
+     * Retourne des informations générales sur l'API
+     */
+    public function accueil()
+    {
+        $infoAPI = [
+            'nom' => 'MediaTek86 API',
+            'version' => '1.0',
+            'description' => 'API REST pour la gestion de la médiathèque',
+            'endpoints' => [
+                'GET /livre' => 'Liste tous les livres',
+                'GET /dvd' => 'Liste tous les DVD',
+                'GET /revue' => 'Liste toutes les revues',
+                'GET /commandedocument/{id}' => 'Liste les commandes d\'un document (livre ou DVD)',
+                'GET /commanderevue/{id}' => 'Liste les commandes (abonnements) d\'une revue',
+                'GET /abofinproche' => 'Liste les abonnements de revues se terminant dans moins de 30 jours',
+                'GET /suivi' => 'Liste les étapes de suivi des commandes',
+                'POST /commandedocument' => 'Ajoute une commande de document',
+                'POST /commanderevue' => 'Ajoute une commande de revue',
+                'PUT /commandedocument/{id}' => 'Met à jour l\'étape de suivi d\'une commande',
+                'DELETE /commandedocument/{id}' => 'Supprime une commande de document',
+                'DELETE /commanderevue/{id}' => 'Supprime une commande de revue'
+            ]
+        ];
+
+        $this->reponse(200, "OK", $infoAPI);
     }
 
     /**
@@ -75,7 +105,7 @@ class Controle
      * @param string $message message correspondant au code
      * @param array|int|string|null $result
      */
-    private function reponse(int $code, string $message, array|int|string|null $result = "")
+    public function reponse(int $code, string $message, array|int|string|null $result = "")
     {
         $retour = array(
             'code' => $code,
