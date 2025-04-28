@@ -1,5 +1,5 @@
 <?php
-include_once("Connexion.php");
+require_once "Connexion.php";
 
 /**
  * Classe qui sollicite ConnexionBDD pour l'accès à la BDD MySQL

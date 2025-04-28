@@ -49,7 +49,7 @@ class MyAccessBDD extends AccessBDD
                 }
             case "revue":
                 if (!empty($champs)) {
-                    return $this->selectTuplesOneTable($table, $champs);
+                    return $this->selectOneRevue($champs);
                 } else {
                     return $this->selectAllRevues();
                 }
@@ -383,8 +383,8 @@ class MyAccessBDD extends AccessBDD
 
         try {
             // Générer un nouvel ID unique de 5 caractères
-            $id = bin2hex(random_bytes(3)); // Génère un ID de 6 caractères
-            $id = substr($id, 0, 5); // On ne garde que 5 caractères
+            $id = bin2hex(random_bytes(3));
+            $id = substr($id, 0, 5);
 
             // Insérer dans la table commande
             $commandeData = [
@@ -405,7 +405,7 @@ class MyAccessBDD extends AccessBDD
                 'id' => $id,
                 'nbExemplaire' => $champs['nbExemplaire'],
                 'idLivreDvd' => $champs['idLivreDvd'],
-                'idSuivi' => 1 // "en cours" par défaut
+                'idSuivi' => 1 // "en cours"
             ];
 
             $resultCommandeDoc = $this->insertOneTupleOneTable('commandedocument', $commandeDocData);
@@ -449,8 +449,8 @@ class MyAccessBDD extends AccessBDD
 
         try {
             // Générer un nouvel ID unique de 5 caractères
-            $id = bin2hex(random_bytes(3)); // Génère un ID de 6 caractères
-            $id = substr($id, 0, 5); // On ne garde que 5 caractères
+            $id = bin2hex(random_bytes(3));
+            $id = substr($id, 0, 5);
 
             // Insérer dans la table commande
             $commandeData = [
@@ -584,9 +584,8 @@ class MyAccessBDD extends AccessBDD
             return null;
         }
 
-        $idToDelete = $champs['id']; // Utiliser une variable spécifique
+        $idToDelete = $champs['id'];
 
-        // Démarrer une transaction
         $this->conn->updateBDD("START TRANSACTION;");
 
         try {
@@ -628,7 +627,7 @@ class MyAccessBDD extends AccessBDD
             if ($exemplaires[0]['nbExemplaires'] > 0) {
                 // Annuler la transaction, impossible de supprimer car des exemplaires existent
                 $this->conn->updateBDD("ROLLBACK;");
-                return 0; // Indique 0 lignes supprimées car la condition n'est pas remplie
+                return 0;
             }
 
             // 2. Supprimer d'abord l'abonnement
@@ -636,19 +635,19 @@ class MyAccessBDD extends AccessBDD
             $paramAbo = ['id' => $idToDelete];
             $resultAbo = $this->conn->updateBDD($requeteAbo, $paramAbo);
 
-            // Si la suppression de l'abonnement a échoué ou n'a affecté aucune ligne (inattendu)
+            // Si la suppression de l'abonnement a échoué
             if ($resultAbo === null || $resultAbo === 0) {
                 $this->conn->updateBDD("ROLLBACK;");
-                return null; // Retourne null en cas d'échec
+                return null;
             }
 
             // 3. Puis supprimer la commande
             $resultCmd = $this->deleteTuplesOneTable('commande', ['id' => $idToDelete]);
 
-            // Si la suppression de la commande a échoué ou n'a affecté aucune ligne (inattendu)
+            // Si la suppression de la commande a échoué
             if ($resultCmd === null || $resultCmd === 0) {
                 $this->conn->updateBDD("ROLLBACK;");
-                return null; // Retourne null en cas d'échec
+                return null;
             }
 
             // Si les deux suppressions ont réussi, valider la transaction
@@ -659,9 +658,7 @@ class MyAccessBDD extends AccessBDD
         } catch (\Exception $e) {
             // Annuler la transaction en cas d'exception
             $this->conn->updateBDD("ROLLBACK;");
-            // Log l'erreur (optionnel mais recommandé)
-            // error_log("Erreur lors de la suppression de la commande revue: " . $e->getMessage());
-            return null; // Retourne null en cas d'exception
+            return null;
         }
     }
 
@@ -699,7 +696,7 @@ class MyAccessBDD extends AccessBDD
      */
     private function selectSuivi(): ?array
     {
-        $requete = "select * from suivi order by etape;"; // Trier par la colonne 'etape'
+        $requete = "select * from suivi order by etape;";
         return $this->conn->queryBDD($requete);
     }
 
@@ -721,20 +718,39 @@ class MyAccessBDD extends AccessBDD
 
         // Vérifier si l'utilisateur existe
         if (empty($user)) {
-            return false; // Utilisateur non trouvé
+            return false;
         }
 
-        $userData = $user[0]; // Prendre le premier (et unique) résultat
+        $userData = $user[0];
         $hashedPassword = $userData['password'];
 
         // Vérifier le mot de passe fourni avec le hash stocké
-        // !!! Ceci ne fonctionnera que si le mot de passe en BDD est un hash valide !!!
         if (password_verify($password, $hashedPassword)) {
-            // Mot de passe correct
-            return $userData; // Retourne toutes les données récupérées (sera filtré dans Controle)
+            return $userData;
         } else {
-            // Mot de passe incorrect
             return false;
         }
+    }
+
+    /**
+     * récupère une seule revue et les tables associées par son ID
+     * @param array|null $champs Doit contenir la clé 'id'
+     * @return array|null
+     */
+    private function selectOneRevue(?array $champs): ?array
+    {
+        if (empty($champs) || !array_key_exists('id', $champs)) {
+            return null;
+        }
+        $param = ['id' => $champs['id']];
+        $requete = "SELECT r.id, r.periodicite, d.titre, d.image, r.delaiMiseADispo,
+                    d.idrayon, d.idpublic, d.idgenre, g.libelle as genre, p.libelle as lePublic, ry.libelle as rayon
+                    FROM revue r
+                    JOIN document d ON r.id=d.id
+                    JOIN genre g ON g.id=d.idGenre
+                    JOIN public p ON p.id=d.idPublic
+                    JOIN rayon ry ON ry.id=d.idRayon
+                    WHERE r.id = :id";
+        return $this->conn->queryBDD($requete, $param);
     }
 }
